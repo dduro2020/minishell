@@ -435,12 +435,12 @@ firstpipe(int *fd, char **ex, int in_file, int out_file, int n)
 
 	pid = fork();
 	if (pid == 0) {
-		if (in_file != -1) {
-            if (dup2(fd[READ], in_file) < 0) {
+		close(fd[READ]);
+        if (in_file != -1) {
+            if (dup2(in_file, 0) < 0) {
                 fprintf(stderr, "dup failed\n");
                 return -1;
             }
-            close(fd[READ]);
             close(in_file);
 		}
 
