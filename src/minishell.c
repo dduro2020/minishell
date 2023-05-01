@@ -780,6 +780,7 @@ int main(int argc, char *argv[]) {
                     /* Esperar a que terminen todos los procesos */
                     while (wait(NULL) > 0);
                 }
+                /*Liberar memoria*/
                 for (i = 0; i < instructions.ncommands; i++) {
                     free(instructions.array[i]);
                     for (j = 0; j < instructions.extras[i]; j++) {
@@ -791,8 +792,6 @@ int main(int argc, char *argv[]) {
                 free(instructions.array);
                 free(instructions.extras);
             }
-            
-            /*Liberar memoria*/
             if (flags.fin == 1) {
                 close(in_file);
                 free(flags.infile);
@@ -801,12 +800,12 @@ int main(int argc, char *argv[]) {
                 close(out_file);
                 free(flags.outfile);
             }
-            for (i = 0; i < paths.num; i++) {
-                free(paths.order[i]);
-            }
-            free(paths.order);
-
         }
+        
+        for (i = 0; i < paths.num; i++) {
+            free(paths.order[i]);
+        }
+        free(paths.order);
     }
 	exit(0);
 }
