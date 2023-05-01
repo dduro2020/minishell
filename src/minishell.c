@@ -117,7 +117,7 @@ int
 searchFlags(char *str, tflags *flags)
 {
 	char *p;
-    int auxin = 0, auxout = 0, auxfg = 0, n = 0, auxand = 0;
+    int auxin = 0, auxout = 0, auxfg = 0, n = 0, auxeq = 0;
 	flags->fpipe = 0;
     flags->fin = 0;
     flags->fout = 0;
@@ -158,10 +158,11 @@ searchFlags(char *str, tflags *flags)
             n++;
         } else if (*p == '=') {
             flags->fdef = 1;
+            auxeq++;
         } 
         p++;
 	}
-    if (auxin > 1 || auxout > 1 || auxfg > 1) {
+    if (auxin > 1 || auxout > 1 || auxfg > 1 || auxeq > 1) {
         fprintf(stderr, "error: wrong flags\n");
         wstatus = -1;
         return -1;
@@ -171,14 +172,7 @@ searchFlags(char *str, tflags *flags)
         wstatus = -1;
         return -1;
     }
-    if (flags->fbg == 1 && auxand > 1) {
-        fprintf(stderr, "error: wrong flags: &\n");
-        wstatus = -1;
-        return -1;
-    }
-    /*if (flags->fbg == 1 && flags->fout == 0) {
-        
-    }"/dev/null"*/
+   
     return 0;
 }
 
@@ -201,6 +195,9 @@ parseRedir_out(char *str, tflags *flags)
         flags->outfile = malloc(sizeof(char) * strlen(saveptr) +1);
         strcpy(flags->outfile, saveptr);
         str = token; 
+    } else if (flags->fbg == 1) {
+        flags->outfile = malloc(sizeof(char) * strlen("/dev/null") +1);
+        strcpy(flags->outfile, "/dev/null");
     }
 
     return 0;
@@ -249,6 +246,23 @@ parseRedir(char *str, tflags *flags)
         }
     }
 
+    return 0;
+}
+
+int
+parseBg(char *str, tflags *flags)
+{
+    char *token, *saveptr;
+    
+    if (flags->fbg == 1) {
+        token = strtok_r(str, "&", &saveptr); 
+        if (token == NULL) {
+            fprintf(stderr, "error: background in wrong place\n");
+            wstatus = -1;
+            return -1;
+        }
+        str = token; 
+    } 
     return 0;
 }
 
@@ -441,7 +455,6 @@ int find_command_path(char **command, tpath paths)
             strcpy(command_path, paths.order[i]);
             strcat(command_path, *command);
             if (access(command_path, X_OK) == 0) {
-                printf("COMPLETE: %s\n", command_path);
                 // Asignar memoria para el nuevo valor de command
                 char* new_command = malloc(strlen(command_path) + 1);
                 if (new_command == NULL) {
@@ -509,11 +522,11 @@ firstpipe(int *fd, char **ex, int in_file, int out_file, int n)
         return -1;
 	} else {
 		close(fd[WRITE]);
-        close(fd[READ]);
         if (n == 1 && out_file != -1) {
             close(out_file);
         }
         if (in_file != -1) {
+            close(fd[READ]);
             close(in_file);
         }
 	}
@@ -660,11 +673,6 @@ int main(int argc, char *argv[]) {
             exit(EXIT_FAILURE);
         }
         
-        /*printf("$PATH:\n");
-        for (i = 0; i < paths.num; i++) {
-            fprintf(stderr, "%d: %s\n", i, paths.order[i]);
-        }*/
-        
         if (printDir() == -1) {
             exit(EXIT_FAILURE);
         }
@@ -681,7 +689,7 @@ int main(int argc, char *argv[]) {
                 free(paths.order[i]);
             }
             free(paths.order);
-            exit(0);
+            exit(EXIT_SUCCESS);
         }
 
         if (strcmp(input, "\0") != 0) {
@@ -689,6 +697,9 @@ int main(int argc, char *argv[]) {
                 exit(EXIT_FAILURE);
             }
             if (parseRedir(input, &flags) == -1) {
+                exit(EXIT_FAILURE);
+            }
+            if (parseBg(input, &flags) == -1) {
                 exit(EXIT_FAILURE);
             }
             if (flags.fdef == 1) {
@@ -700,7 +711,7 @@ int main(int argc, char *argv[]) {
                 if (instructions.ncommands == -1) {
                     exit(EXIT_FAILURE);
                 }
-                printf("Numero de comandos: %d\n", instructions.ncommands);
+                //printf("Numero de comandos: %d\n", instructions.ncommands);
                 
                 instructions.extras = malloc(sizeof(int) * instructions.ncommands);
                 instructions.ex = malloc(sizeof(char**) * instructions.ncommands);
@@ -714,7 +725,7 @@ int main(int argc, char *argv[]) {
                     if (instructions.extras[i] == -1) {
                         exit(EXIT_FAILURE);
                     }
-                    printf("Comando sin parsear: %s\n", instructions.array[i]);
+                    //printf("Comando sin parsear: %s\n", instructions.array[i]);
                     if (parseSpace(&instructions, i) == -1) {
                         exit(EXIT_FAILURE);
                     }
@@ -738,12 +749,14 @@ int main(int argc, char *argv[]) {
                         change_directory(instructions.ex[0][1]);
                     }
                 } else {
-                    printf("Redirecciones: IN: %s, OUT: %s\n", flags.infile, flags.outfile);
+                    //printf("Redirecciones: IN: %s, OUT: %s\n", flags.infile, flags.outfile);
                     /* Ejecutar el primer comando */
                     if (flags.fin == 1) {
                         in_file = handleRedir(flags.infile, O_RDONLY, S_IRUSR);
                     }
                     if (flags.fout == 1) {
+                        out_file = handleRedir(flags.outfile, O_WRONLY|O_CREAT|O_TRUNC, S_IWUSR|S_IRUSR);
+                    } else if (flags.fbg == 1 ) {
                         out_file = handleRedir(flags.outfile, O_WRONLY|O_CREAT|O_TRUNC, S_IWUSR|S_IRUSR);
                     }
                     if (firstpipe(fd, instructions.ex[0], in_file, out_file, instructions.ncommands) == -1) {
@@ -784,9 +797,7 @@ int main(int argc, char *argv[]) {
                 close(in_file);
                 free(flags.infile);
             }
-            if (flags.fout == 1) {
-                //dup2(1, out_file); // Restablece stdout al terminal
-
+            if (flags.fout == 1 || flags.fbg == 1) {
                 close(out_file);
                 free(flags.outfile);
             }
