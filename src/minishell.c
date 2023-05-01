@@ -35,6 +35,8 @@ struct tflags {
     int fbg;
     int fenv;
     int fdef;
+    int firstout;
+    int firstin;
     char *infile;
     char *outfile;
 };
@@ -122,7 +124,8 @@ searchFlags(char *str, tflags *flags)
     flags->fbg = 0;
     flags->fenv = 0;
     flags->fdef = 0;
-    flags->fbg = 0;
+    flags->firstout = 0;
+    flags->firstin = 0;
     flags->infile = NULL;
     flags->outfile = NULL;
     
@@ -133,10 +136,16 @@ searchFlags(char *str, tflags *flags)
 			flags->fpipe = 1;
             n++;
 		} else if (*p == '<') {
+            if (flags->fout == 0) {
+                flags->firstin = 1;
+            }
             flags->fin = 1;
             auxin++;
             n++;
         } else if (*p == '>') {
+            if (flags->fin == 0) {
+                flags->firstout = 1;
+            }
             flags->fout = 1;
             auxout++;
             n++;
@@ -174,7 +183,7 @@ searchFlags(char *str, tflags *flags)
 }
 
 int
-parseRedir(char *str, tflags *flags)
+parseRedir_out(char *str, tflags *flags)
 {
 	char *token, *saveptr;
     
@@ -194,6 +203,14 @@ parseRedir(char *str, tflags *flags)
         str = token; 
     }
 
+    return 0;
+}
+
+int
+parseRedir_in(char *str, tflags *flags)
+{
+    char *token, *saveptr;
+    
     if (flags->fin == 1) {
         token = strtok_r(str, "<", &saveptr); 
         if (token == NULL) {
@@ -209,6 +226,29 @@ parseRedir(char *str, tflags *flags)
         strcpy(flags->infile, saveptr);
         str = token; 
     }
+
+    return 0;
+}
+
+int
+parseRedir(char *str, tflags *flags)
+{
+    if (flags->firstout == 1) {
+        if (parseRedir_in(str, flags) < 0) {
+            return -1;
+        }
+        if (parseRedir_out(str, flags) < 0) {
+            return -1;
+        }    
+    } else {
+        if (parseRedir_out(str, flags) < 0) {
+            return -1;
+        }
+        if (parseRedir_in(str, flags) < 0) {
+            return -1;
+        }
+    }
+
     return 0;
 }
 
