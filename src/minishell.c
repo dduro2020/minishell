@@ -658,13 +658,18 @@ int main(int argc, char *argv[]) {
     tpath paths;
     tcommand instructions;
     tflags flags;
-    int i, j, in_file, out_file;
+    int i, j, in_file, out_file, pid;
+    int nbg = 0;
     int fd[2], prev_fd[2];
     wstatus = 0;
 
     clear();
    
     while (wstatus == 0) {
+        pid = 0;
+        in_file = -1;
+        out_file = -1;
+
         paths.num = countDots(getenv("PATH"));
         if (paths.num == -1) {
             exit(EXIT_FAILURE);
@@ -672,7 +677,6 @@ int main(int argc, char *argv[]) {
         if (splitPath(getenv("PATH"), &paths) == -1) {
             exit(EXIT_FAILURE);
         }
-        
         if (printDir() == -1) {
             exit(EXIT_FAILURE);
         }
@@ -681,8 +685,7 @@ int main(int argc, char *argv[]) {
             exit(EXIT_FAILURE);
         }
         input[strlen(input) -1] = '\0';
-        in_file = -1;
-        out_file = -1;
+        
         // Check for exit command
         if (strcmp(input, "exit") == 0) {
             for (i = 0; i < paths.num; i++) {
@@ -696,109 +699,150 @@ int main(int argc, char *argv[]) {
             if (searchFlags(input, &flags) == -1) {
                 exit(EXIT_FAILURE);
             }
-            if (parseRedir(input, &flags) == -1) {
-                exit(EXIT_FAILURE);
+            if (flags.fbg == 1) {
+                pid = fork();
             }
-            if (parseBg(input, &flags) == -1) {
+            if (pid == -1) {
+                fprintf(stderr, "cannot fork\n");
                 exit(EXIT_FAILURE);
-            }
-            if (flags.fdef == 1) {
-                if (defvars(input) == -1) {
+            } else if (pid == 0) {
+                if (flags.fbg == 1) {
+                    nbg++;
+                    printf("[%d] %d\n", nbg, getpid());
+                }
+                if (parseRedir(input, &flags) == -1) {
                     exit(EXIT_FAILURE);
                 }
-            } else {
-                instructions.ncommands = countPipes(input);
-                if (instructions.ncommands == -1) {
+                if (parseBg(input, &flags) == -1) {
                     exit(EXIT_FAILURE);
                 }
-                //printf("Numero de comandos: %d\n", instructions.ncommands);
-                
-                instructions.extras = malloc(sizeof(int) * instructions.ncommands);
-                instructions.ex = malloc(sizeof(char**) * instructions.ncommands);
-
-                if (parsePipe(input, &instructions) == -1) {
-                    exit(EXIT_FAILURE);
-                }
-
-                for (i = 0; i < instructions.ncommands; i++) {
-                    instructions.extras[i] = countWords(instructions.array[i]);
-                    if (instructions.extras[i] == -1) {
+                if (flags.fdef == 1) {
+                    if (defvars(input) == -1) {
                         exit(EXIT_FAILURE);
-                    }
-                    //printf("Comando sin parsear: %s\n", instructions.array[i]);
-                    if (parseSpace(&instructions, i) == -1) {
-                        exit(EXIT_FAILURE);
-                    }
-                    if (strcmp(instructions.ex[0][0], "cd") == 0) {
-                        break;
-                    }
-                    if (find_command_path(&instructions.ex[i][0], paths) == -1) {
-                        exit(EXIT_FAILURE);
-                    }
-                    /*printf("Comando parseado %d con %d extras es: ", i, instructions.extras[i]);
-                    for (j = 0; j < instructions.extras[i]; j++) {
-                        printf("%s\n", instructions.ex[i][j]);
-                    }*/
-                }
-                if (strcmp(instructions.ex[0][0], "cd") == 0) {
-                    if (instructions.extras[0] > 2) {
-                        fprintf(stderr, "error: cd [dir]\n");
-                    } else if (instructions.extras[0] == 1) {
-                        change_directory(NULL);
-                    } else { 
-                        change_directory(instructions.ex[0][1]);
                     }
                 } else {
-                    //printf("Redirecciones: IN: %s, OUT: %s\n", flags.infile, flags.outfile);
-                    /* Ejecutar el primer comando */
-                    if (flags.fin == 1) {
-                        in_file = handleRedir(flags.infile, O_RDONLY, S_IRUSR);
-                    }
-                    if (flags.fout == 1) {
-                        out_file = handleRedir(flags.outfile, O_WRONLY|O_CREAT|O_TRUNC, S_IWUSR|S_IRUSR);
-                    } else if (flags.fbg == 1 ) {
-                        out_file = handleRedir(flags.outfile, O_WRONLY|O_CREAT|O_TRUNC, S_IWUSR|S_IRUSR);
-                    }
-                    if (firstpipe(fd, instructions.ex[0], in_file, out_file, instructions.ncommands) == -1) {
+                    instructions.ncommands = countPipes(input);
+                    if (instructions.ncommands == -1) {
                         exit(EXIT_FAILURE);
                     }
-                    memcpy(prev_fd, fd, sizeof(fd));
+                    //printf("Numero de comandos: %d\n", instructions.ncommands);
+                    
+                    instructions.extras = malloc(sizeof(int) * instructions.ncommands);
+                    instructions.ex = malloc(sizeof(char**) * instructions.ncommands);
 
-                    for (i = 1; i < instructions.ncommands-1; i++) {
-                        /* Ejecutar comandos intermedios */
-                        if (pipes(prev_fd, fd, instructions.ex[i]) == -1) {
+                    if (parsePipe(input, &instructions) == -1) {
+                        exit(EXIT_FAILURE);
+                    }
+
+                    for (i = 0; i < instructions.ncommands; i++) {
+                        instructions.extras[i] = countWords(instructions.array[i]);
+                        if (instructions.extras[i] == -1) {
+                            exit(EXIT_FAILURE);
+                        }
+                        //printf("Comando sin parsear: %s\n", instructions.array[i]);
+                        if (parseSpace(&instructions, i) == -1) {
+                            exit(EXIT_FAILURE);
+                        }
+                        if (strcmp(instructions.ex[0][0], "cd") == 0) {
+                            break;
+                        }
+                        if (find_command_path(&instructions.ex[i][0], paths) == -1) {
+                            exit(EXIT_FAILURE);
+                        }
+                        /*printf("Comando parseado %d con %d extras es: ", i, instructions.extras[i]);
+                        for (j = 0; j < instructions.extras[i]; j++) {
+                            printf("%s\n", instructions.ex[i][j]);
+                        }*/
+                    }
+                    if (strcmp(instructions.ex[0][0], "cd") == 0) {
+                        if (instructions.extras[0] > 2) {
+                            fprintf(stderr, "error: cd [dir]\n");
+                        } else if (instructions.extras[0] == 1) {
+                            change_directory(NULL);
+                        } else { 
+                            change_directory(instructions.ex[0][1]);
+                        }
+                    } else {
+                        //printf("Redirecciones: IN: %s, OUT: %s\n", flags.infile, flags.outfile);
+                        /* Ejecutar el primer comando */
+                        if (flags.fin == 1) {
+                            in_file = handleRedir(flags.infile, O_RDONLY, S_IRUSR);
+                        }
+                        if (flags.fout == 1) {
+                            out_file = handleRedir(flags.outfile, O_WRONLY|O_CREAT|O_TRUNC, S_IWUSR|S_IRUSR);
+                        } else if (flags.fbg == 1 ) {
+                            out_file = handleRedir(flags.outfile, O_WRONLY|O_CREAT|O_TRUNC, S_IWUSR|S_IRUSR);
+                        }
+                        if (firstpipe(fd, instructions.ex[0], in_file, out_file, instructions.ncommands) == -1) {
                             exit(EXIT_FAILURE);
                         }
                         memcpy(prev_fd, fd, sizeof(fd));
-                    }
-                    /* Ejecutar el último comando */
-                    if (instructions.ncommands > 1) {
-                        if (lastpipe(prev_fd, instructions.ex[instructions.ncommands-1], out_file) == -1) {
-                            exit(EXIT_FAILURE);
+
+                        for (i = 1; i < instructions.ncommands-1; i++) {
+                            /* Ejecutar comandos intermedios */
+                            if (pipes(prev_fd, fd, instructions.ex[i]) == -1) {
+                                exit(EXIT_FAILURE);
+                            }
+                            memcpy(prev_fd, fd, sizeof(fd));
                         }
+                        /* Ejecutar el último comando */
+                        if (instructions.ncommands > 1) {
+                            if (lastpipe(prev_fd, instructions.ex[instructions.ncommands-1], out_file) == -1) {
+                                exit(EXIT_FAILURE);
+                            }
+                        }
+                        /* Esperar a que terminen todos los procesos */
+                        while (wait(NULL) > 0);
                     }
-                    /* Esperar a que terminen todos los procesos */
-                    while (wait(NULL) > 0);
                 }
+
                 /*Liberar memoria*/
-                for (i = 0; i < instructions.ncommands; i++) {
-                    free(instructions.array[i]);
-                    for (j = 0; j < instructions.extras[i]; j++) {
-                        free(instructions.ex[i][j]);
+                if (flags.fdef == 0) {
+                    for (i = 0; i < instructions.ncommands; i++) {
+                        free(instructions.array[i]);
+                        for (j = 0; j < instructions.extras[i]; j++) {
+                            free(instructions.ex[i][j]);
+                        }
+                        free(instructions.ex[i]);
                     }
-                    free(instructions.ex[i]);
+                    free(instructions.ex);
+                    free(instructions.array);
+                    free(instructions.extras);
                 }
-                free(instructions.ex);
-                free(instructions.array);
-                free(instructions.extras);
+
+                if (flags.fbg == 1) {
+                    if (flags.fin == 1) {
+                        close(in_file);
+                        free(flags.infile);
+                    }
+                    if (flags.fout == 1 || flags.fbg == 1) {
+                        close(out_file);
+                        free(flags.outfile);
+                    }
+                    for (i = 0; i < paths.num; i++) {
+                        free(paths.order[i]);
+                    }
+                    free(paths.order);
+                    
+                    /*printf("\n[%d]+\tDone\n", nbg);
+                    if (printDir() == -1) {
+                        exit(EXIT_FAILURE);
+                    }*/
+                    nbg--;
+                    exit(EXIT_SUCCESS);
+                }
+            } else {
+                usleep(250);
             }
-            if (flags.fin == 1) {
-                close(in_file);
-                free(flags.infile);
-            }
-            if (flags.fout == 1 || flags.fbg == 1) {
-                close(out_file);
-                free(flags.outfile);
+            if (flags.fbg != 1) {
+                if (flags.fin == 1) {
+                    close(in_file);
+                    free(flags.infile);
+                }
+                if (flags.fout == 1 || flags.fbg == 1) {
+                    close(out_file);
+                    free(flags.outfile);
+                }
             }
         }
         
