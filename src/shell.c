@@ -22,7 +22,7 @@ main(int argc, char *argv[])
 	tpath paths;
 	tcommand instructions;
 	tflags flags;
-	int i, j, in_file, out_file;
+	int i, j, in_file, out_file, auxstatus;
 	int fd[2], prev_fd[2];
 
 
@@ -31,6 +31,7 @@ main(int argc, char *argv[])
 	while (1) {
 		in_file = -1;
 		out_file = -1;
+		auxstatus = 0;
 
 		paths.num = countDots(getenv("PATH"));
 		if (paths.num == -1) {
@@ -59,16 +60,21 @@ main(int argc, char *argv[])
 			exit(EXIT_SUCCESS);
 		}
 
-		if (strcmp(input, "\0") != 0) {
+		if (strcmp(input, "\0") != 0 ) {
 			if (searchFlags(input, &flags) == -1) {
 				fprintf(stderr, "error: wrong flags\n");
-				exit(EXIT_FAILURE);
+				auxstatus = -1;
+				//exit(EXIT_FAILURE);
 			}
+		}
+		if (auxstatus == 0) {
 			if (parseRedir(input, &flags) == -1) {
-				exit(EXIT_FAILURE);
+				auxstatus = -1;
+				//exit(EXIT_FAILURE);
 			}
 			if (parseBg(input, &flags) == -1) {
-				exit(EXIT_FAILURE);
+				auxstatus = -1;
+				//exit(EXIT_FAILURE);
 			}
 			if (flags.fdef == 1) {
 				if (defvars(input) == -1) {
@@ -80,7 +86,6 @@ main(int argc, char *argv[])
 				if (instructions.ncommands == -1) {
 					exit(EXIT_FAILURE);
 				}
-				//printf("Numero de comandos: %d\n", instructions.ncommands);
 
 				instructions.extras =
 					malloc(sizeof(int) *
@@ -105,7 +110,7 @@ main(int argc, char *argv[])
 					}
 					if (parseSpace(&instructions, i)
 						== -1) {
-						exit(EXIT_FAILURE);
+						auxstatus = -1;
 					}
 					if (strcmp
 						(instructions.ex[0][0],
@@ -115,7 +120,7 @@ main(int argc, char *argv[])
 					if (find_command_path
 						(&instructions.ex[i][0],
 							paths) == -1) {
-						exit(EXIT_FAILURE);
+						auxstatus = -1;
 					}
 				}
 				if (strcmp(instructions.ex[0][0], "cd")
@@ -131,7 +136,7 @@ main(int argc, char *argv[])
 							(instructions.
 								ex[0][1]);
 					}
-				} else {
+				} else if (auxstatus == 0){
 					/* Ejecutar el primer comando */
 					if (flags.fin == 1) {
 						in_file =
@@ -220,14 +225,15 @@ main(int argc, char *argv[])
 				free(instructions.extras);
 			}
 
-		
-			if (flags.fin == 1 || flags.fbg == 1) {
-				close(in_file);
-				free(flags.infile);
-			}
-			if (flags.fout == 1) {
-				close(out_file);
-				free(flags.outfile);
+			if (auxstatus == 0) {
+				if (flags.fin == 1 || flags.fbg == 1) {
+					close(in_file);
+					free(flags.infile);
+				}
+				if (flags.fout == 1) {
+					close(out_file);
+					free(flags.outfile);
+				}
 			}
 		}
 

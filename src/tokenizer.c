@@ -57,11 +57,12 @@ check_input(char *str)
 	return 0;
 }
 
+/* compact flags check, if one is incorrect, return -1, program do not exit */
 int
 searchFlags(char *str, tflags * flags)
 {
-	char *p;
-	int auxin = 0, auxout = 0, auxfg = 0, n = 0, auxeq = 0;
+	char *p, *aux;
+	int auxin = 0, auxout = 0, auxbg = 0, n = 0, auxeq = 0;
 
 	flags->fpipe = 0;
 	flags->fin = 0;
@@ -75,10 +76,23 @@ searchFlags(char *str, tflags * flags)
 	flags->outfile = NULL;
 
 	p = str;
-
+	
 	while (*p != '\0') {
 		if (*p == '|') {
+			aux = p+1;
+			while (*aux != '\0' && *aux == ' ') {
+				if ( *(aux + 1) == '\0' ) {
+					return -1;
+				}
+				aux++;
+			}
 			flags->fpipe = 1;
+			if ( *(p+1) == '|' || str[0] == '|' || *(p+1) == '\0' ) {
+				return -1;
+			}
+			if (auxout != 0 || auxin != 0 || auxbg != 0) {
+				return -1;
+			}
 			n++;
 		} else if (*p == '<') {
 			if (flags->fout == 0) {
@@ -96,7 +110,7 @@ searchFlags(char *str, tflags * flags)
 			n++;
 		} else if (*p == '&') {
 			flags->fbg = 1;
-			auxfg++;
+			auxbg++;
 			n++;
 			if (*(p+1) != '\0') {
 				return -1;
@@ -105,6 +119,9 @@ searchFlags(char *str, tflags * flags)
 			flags->fenv = 1;
 			n++;
 		} else if (*p == '=') {
+			if ( *(p+1) == ' ' || *(p+1) == '\t' || *(p-1) == ' ') {
+				return -1;
+			}
 			flags->fdef = 1;
 			auxeq++;
 		} else if(*p == '\t') {
@@ -112,12 +129,10 @@ searchFlags(char *str, tflags * flags)
 		}
 		p++;
 	}
-	if (auxin > 1 || auxout > 1 || auxfg > 1 || auxeq > 1) {
-		fprintf(stderr, "error: wrong flags\n");
+	if (auxin > 1 || auxout > 1 || auxbg > 1 || auxeq > 1) {
 		return -1;
 	}
 	if (flags->fdef == 1 && n > 0) {
-		fprintf(stderr, "error: cannot define variable\n");
 		return -1;
 	}
 
@@ -332,7 +347,7 @@ replace_env_vars(tcommand * instructions, int num, char *str, int n)
 	str = str + 1;
 	value = getenv(str);
 	if (value == NULL) {
-		fprintf(stderr, "error: no coincidences with :$%s\n", str);
+		fprintf(stderr, "error: var $%s does not exists\n", str);
 		return -1;
 	}
 	instructions->ex[num][n] = malloc(sizeof(char) * strlen(value) + 1);
@@ -346,6 +361,7 @@ parseSpace(tcommand * instructions, int num)
 {
 	char *token;
 	int i = 0;
+	int status = 0;
 
 	instructions->ex[num] =
 	    malloc(sizeof(char *) * (instructions->extras[num] + 1));
@@ -353,7 +369,10 @@ parseSpace(tcommand * instructions, int num)
 	token = strtok(instructions->array[num], " ");
 	if (*token == '$') {
 		if (replace_env_vars(instructions, num, token, i) == -1) {
-			return -1;
+			status = -1;
+			instructions->ex[num][i] =
+		    	malloc(sizeof(char) * strlen(token) + 1);
+			strcpy(instructions->ex[num][i], token);
 		}
 	} else {
 		instructions->ex[num][i] =
@@ -366,7 +385,10 @@ parseSpace(tcommand * instructions, int num)
 			if (*token == '$') {
 				if (replace_env_vars
 				    (instructions, num, token, i) == -1) {
-					return -1;
+					status = -1;
+					instructions->ex[num][i] =
+		    			malloc(sizeof(char) * strlen(token) + 1);
+					strcpy(instructions->ex[num][i], token);
 				}
 			} else {
 				instructions->ex[num][i] =
@@ -376,7 +398,7 @@ parseSpace(tcommand * instructions, int num)
 		}
 	}
 	instructions->ex[num][instructions->extras[num]] = NULL;
-	return 0;
+	return status;
 }
 
 int
@@ -388,36 +410,25 @@ find_command_path(char **command, tpath paths)
 	if (access(*command, X_OK) == 0) {
 		return 0;
 	} else {
-
+		/* search executables path */
 		for (i = 0; i < paths.num; i++) {
-			// Asignar memoria para command_path
 			command_path =
 			    malloc(strlen(paths.order[i]) + strlen(*command) +
 				   1);
-			if (command_path == NULL) {
-				// Manejar error de asignación de memoria
-				return -1;
-			}
 			strcpy(command_path, paths.order[i]);
 			strcat(command_path, *command);
 			if (access(command_path, X_OK) == 0) {
-				// Asignar memoria para el nuevo valor de command
 				char *new_command =
 				    malloc(strlen(command_path) + 1);
-				if (new_command == NULL) {
-					// Manejar error de asignación de memoria
-					free(command_path);	// Liberar la memoria asignada a command_path
-					fprintf(stderr,
-						"error al asignar memoria\n");
-					return -1;
-				}
+	
 				strcpy(new_command, command_path);
-				free(*command);	// Liberar la memoria asignada previamente a command
-				*command = new_command;	// Actualizar el puntero command con la nueva asignación
+				/* free memory of *command */
+				free(*command);
+				/* reasigment of pointer, now in new direction because needs more memory */
+				*command = new_command;
 				free(command_path);
 				return 0;
 			}
-			// Liberar la memoria asignada a command_path
 			free(command_path);
 		}
 	}
