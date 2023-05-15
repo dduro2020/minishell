@@ -38,6 +38,26 @@ clear_spaces(char *str)
 }
 
 int
+check_input(char *str)
+{
+	char *p;
+	int i = 0;
+	p = str;
+
+	while (*p != '\0') {
+		if (*p == ' ' || *p == '\t') {
+			i++;
+		}
+		p++;
+	}
+	if (strlen(str) == i){
+		str[0] = '\0';
+	}
+
+	return 0;
+}
+
+int
 searchFlags(char *str, tflags * flags)
 {
 	char *p;
@@ -78,12 +98,17 @@ searchFlags(char *str, tflags * flags)
 			flags->fbg = 1;
 			auxfg++;
 			n++;
+			if (*(p+1) != '\0') {
+				return -1;
+			}
 		} else if (*p == '$') {
 			flags->fenv = 1;
 			n++;
 		} else if (*p == '=') {
 			flags->fdef = 1;
 			auxeq++;
+		} else if(*p == '\t') {
+			*p = ' ';
 		}
 		p++;
 	}
@@ -116,9 +141,6 @@ parseRedir_out(char *str, tflags * flags)
 		flags->outfile = malloc(sizeof(char) * strlen(saveptr) + 1);
 		strcpy(flags->outfile, saveptr);
 		str = token;
-	} else if (flags->fbg == 1) {
-		flags->outfile = malloc(sizeof(char) * strlen("/dev/null") + 1);
-		strcpy(flags->outfile, "/dev/null");
 	}
 
 	return 0;
@@ -141,6 +163,9 @@ parseRedir_in(char *str, tflags * flags)
 		flags->infile = malloc(sizeof(char) * strlen(saveptr) + 1);
 		strcpy(flags->infile, saveptr);
 		str = token;
+	} else if (flags->fbg == 1) {
+		flags->infile = malloc(sizeof(char) * strlen("/dev/null") + 1);
+		strcpy(flags->infile, "/dev/null");
 	}
 
 	return 0;
@@ -360,7 +385,7 @@ find_command_path(char **command, tpath paths)
 	int i;
 	char *command_path;
 
-	if (*command[0] == '.') {
+	if (access(*command, X_OK) == 0) {
 		return 0;
 	} else {
 

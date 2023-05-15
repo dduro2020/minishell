@@ -19,7 +19,6 @@ printDir()
 		return -1;
 	}
 	getcwd(cwd, sizeof(cwd));
-	usleep(50000);		//si venimos de bg y no esperamos, se pueden solapar printdir y la salida del comando anterior
 	printf("%s:~%s$ ", username, cwd);
 	return 0;
 }

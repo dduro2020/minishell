@@ -10,7 +10,7 @@
 #include "tokenizer.h"
 
 int
-firstpipe(int *fd, char **ex, int in_file, int out_file, int n)
+firstpipe(int *fd, char **ex, int in_file, int out_file, int n, int fbg)
 {
 	int pid, auxstatus;
 
@@ -55,20 +55,24 @@ firstpipe(int *fd, char **ex, int in_file, int out_file, int n)
 		return -1;
 	} else {
 		close(fd[WRITE]);
+		if (n == 1) {
+			close(fd[READ]);
+		}
 		if (n == 1 && out_file != -1) {
 			close(out_file);
 		}
 		if (in_file != -1) {
-			close(fd[READ]);
 			close(in_file);
 		}
-		wait(&auxstatus);
+		if (fbg != 1 || n != 1) {
+			waitpid(pid, &auxstatus, 0);
+		}
 	}
 	return 0;
 }
 
 int
-pipes(int *fd1, int *fd2, char **ex)
+pipes(int *fd1, int *fd2, char **ex, int fbg)
 {
 	int pid, auxstatus;
 
@@ -104,13 +108,13 @@ pipes(int *fd1, int *fd2, char **ex)
 	} else {
 		close(fd1[READ]);
 		close(fd2[WRITE]);
-		wait(&auxstatus);
+		waitpid(pid, &auxstatus, 0);
 	}
 	return 0;
 }
 
 int
-lastpipe(int *fd, char **ex, int out_file)
+lastpipe(int *fd, char **ex, int out_file, int fbg)
 {
 	int pid, auxstatus;
 
@@ -139,7 +143,9 @@ lastpipe(int *fd, char **ex, int out_file)
 		return -1;
 	} else {
 		close(fd[READ]);
-		wait(&auxstatus);
+		if (fbg != 1) {
+			waitpid(pid, &auxstatus, 0);
+		}
 	}
 	return 0;
 }
@@ -154,17 +160,21 @@ defvars(char *inputString)
 
 	name = strtok_r(inputString, del, &saveptr);
 	if (clear_spaces(name) < 0) {
+		fprintf(stderr, "error: wrong assignation of var env\n");
 		return -1;
 	}
 	value = strtok_r(NULL, del, &saveptr);
 	if (clear_spaces(value) < 0) {
+		fprintf(stderr, "error: wrong assignation of var env\n");
 		return -1;
 	}
 	if (name == NULL || value == NULL) {
+		fprintf(stderr, "error: wrong assignation of var env\n");
 		return -1;
 	}
 
 	if (setenv(name, value, 1) < 0) {
+		fprintf(stderr, "error: wrong assignation of var env\n");
 		return -1;
 	}
 

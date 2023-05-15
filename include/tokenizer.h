@@ -5,6 +5,9 @@ void clear();
 /* delete all blanc spaces in words */
 int clear_spaces(char *str);
 
+/* checks if input are blanc spaces */
+int check_input(char *str);
+
 /* check every falg in command line */
 int searchFlags(char *str, tflags *flags);
 
