@@ -225,15 +225,17 @@ main(int argc, char *argv[])
 				free(instructions.extras);
 			}
 
-			if (auxstatus == 0) {
-				if (flags.fin == 1 || flags.fbg == 1) {
+			if (flags.fin == 1 || flags.fbg == 1) {
+				if (auxstatus == 0) {
 					close(in_file);
-					free(flags.infile);
 				}
-				if (flags.fout == 1) {
+				free(flags.infile);
+			}
+			if (flags.fout == 1) {
+				if (auxstatus == 0) {
 					close(out_file);
-					free(flags.outfile);
 				}
+				free(flags.outfile);
 			}
 		}
 
